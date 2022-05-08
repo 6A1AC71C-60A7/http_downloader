@@ -1,8 +1,9 @@
 # C/CPP Binaries
 downloader
-objs/
+obj/
 *.out
 *.o
+*.d
 
 # macOS
 .DS_Store

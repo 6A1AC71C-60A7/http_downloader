@@ -17,6 +17,7 @@ int	main(int ac, const char **av)
 	ssl_init();
 
 	bzero(&client, sizeof(client));
+
 	status = http_connect(&client, DL_BASEURL);
 	if (status == 0)
 	{

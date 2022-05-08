@@ -1,5 +1,7 @@
 #pragma once
 
+#include <libft/hmap_s.h>
+
 #include <sock_cli.h>
 
 #ifndef HTTP_PROTO
@@ -9,6 +11,12 @@
 #ifndef HTTP_PROTO_SSL
 # define HTTP_PROTO_SSL   "https"
 #endif
+
+typedef struct  http_client
+{
+    sock_cli_t  socket;
+
+}               http_client_t;
 
 int http_connect(sock_cli_t *client, const char *url);
 

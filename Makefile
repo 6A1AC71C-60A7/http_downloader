@@ -6,15 +6,15 @@ LD = clang
 AR = ar
 
 # Paths
-SRCDIR = srcs
-INCDIR = includes
+SRCDIR = src
+INCDIR = include
 LIBDIR = lib
 
-OBJDIR = objs
+OBJDIR = obj
 BINDIR = .
 
 # Library dependencies
-LIBS = $(addprefix $(LIBDIR)/, )
+LIBS = $(addprefix $(LIBDIR)/, libft/libft.a)
 
 LIBDIRS = $(dir $(LIBS))
 LIBINCS = $(addsuffix $(INCDIR), $(LIBDIRS))

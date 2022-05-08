@@ -9,8 +9,8 @@
 
 typedef struct	sock_cli
 {
-	SSL	*ssl;
-	int	connection;
+	SSL			*ssl;
+	int			connection;
 }				sock_cli_t;
 
 void	ssl_init();
