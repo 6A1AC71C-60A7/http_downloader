@@ -94,8 +94,6 @@ int		client_connect(sock_cli_t *client, const char *hostname,
 			client->ssl = SSL_new(ssl_ctx);
 		else
 			SSL_clear(client->ssl);
-
-		dprintf(2, "init ssl: %p, %p\n", ssl_ctx, client->ssl);
 	}
 	else
 	{
@@ -106,22 +104,72 @@ int		client_connect(sock_cli_t *client, const char *hostname,
 		}
 	}
 
-	if (client->connection > 0)
-		close(client->connection);
+	if (client->conn > 0)
+		close(client->conn);
 
-	client->connection = connect_hostname(hostname, service);
+	client->conn = connect_hostname(hostname, service);
 
-	status = client->connection == -1;
+	status = client->conn == -1;
 
 	if (status == 0 && client->ssl != NULL)
 	{
-		dprintf(2, "Binding ssl to fd %d...\n", client->connection);
-		SSL_set_fd(client->ssl, client->connection);
+		SSL_set_fd(client->ssl, client->conn);
 
 		status = SSL_connect(client->ssl) != 1;
 	}
 
-	dprintf(2, "Connected! %d\n", client->connection);
-
 	return (status);
+}
+
+int		client_disconnect(sock_cli_t *client)
+{
+	if (client->conn != 0)
+	{
+		if (client->ssl != NULL)
+		{
+			SSL_shutdown(client->ssl);
+			SSL_free(client->ssl);
+			client->ssl = NULL;
+		}
+		client->conn = close(client->conn);
+	}
+	return (client->conn);
+}
+
+int		client_destroy(sock_cli_t *client)
+{
+	int	status;
+
+	status = client_disconnect(client);
+
+	if (client->ssl)
+	{
+		SSL_CTX_free(ssl_ctx);
+		ssl_ctx = NULL;
+	}
+	return (status);
+}
+
+ssize_t	client_send(const sock_cli_t *client, const char *data, size_t size)
+{
+	ssize_t	length;
+
+	if (client->ssl == NULL)
+		length = send(client->conn, data, size, 0);
+	else
+		length = SSL_write(client->ssl, data, size);
+
+	return (length);
+}
+
+ssize_t	client_recv(const sock_cli_t *client, char *dest, size_t size)
+{
+	ssize_t	length;
+
+	if (client->ssl == NULL)
+		length = recv(client->conn, dest, size, 0);
+	else
+		length = SSL_read(client->ssl, dest, size);
+
+	return (length);
 }

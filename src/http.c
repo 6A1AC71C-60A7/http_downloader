@@ -1,4 +1,8 @@
+#include "libft/hmap/hmap_s.h"
+#include "libft/hmap/hmap_s_pair.h"
+#include "sock_cli.h"
 #include <openssl/ssl.h>
+#include <stddef.h>
 #include <sys/socket.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -6,6 +10,8 @@
 
 #include <http.h>
 
+
+#define HTTP_HEADER_COUNT 16
 
 static const char	*headers = "Accept: */*\r\n";
 
@@ -22,35 +28,7 @@ static const char	*find_term(const char *message)
 	return (message);
 }
 
-static size_t		header_size(const char *message)
-{
-	size_t		size;
-	size_t		field_size;
-	const char	*next;
-
-	size = 0;
-
-	do
-	{
-		next = find_term(message);
-
-		if (next != NULL)
-		{
-			field_size = next - message;
-			dprintf(2, "Skipping header %.*s\n", (unsigned)field_size, message);
-			size += field_size;
-		}
-		else
-			field_size = 0;
-
-		message = next;
-	}
-	while (next != NULL && field_size != 0);
-
-	return (size);
-}
-
-int					http_connect(sock_cli_t *client, const char *url)
+int					http_connect(http_cli_t *client, const char *url)
 {
 	char	hostname[256];
 	char	protocol[256];
@@ -70,53 +48,73 @@ int					http_connect(sock_cli_t *client, const char *url)
 
 	if (status == 0)
 	{
-		dprintf(2, "Connecting to %s://%s:%s...\n", protocol, hostname, port);
-		status = client_connect(client, hostname, port, use_ssl);
+		//dprintf(2, "Connecting to %s://%s:%s...\n", protocol, hostname, port);
+		status = client_connect(&client->socket, hostname, port, use_ssl);
+		
+		if (client->headers == NULL)
+		{
+			client->headers = hmap_s_new(16);
+			status = client->headers == NULL;
+			if (status == 0)
+			{
+				hmap_s_set(client->headers, "Host", strdup(hostname));
+			}
+			else
+				client_disconnect(&client->socket);
+		}
 	}
 	else
-	{
 		dprintf(2, "Invalid url: %s, found %zi fields!\n", url, nconv);
-	}
 	return (status);
 }
 
-int					http_get(const sock_cli_t *client, const char *path)
+int		http_header_add(t_hmap_s *headers, const char *header, size_t length)
+{
+	char	key[256];
+	char	value[256];
+	int		nconv;
+	int		status;
+
+	nconv = sscanf(header, "%256[^:]: %256[^\r]\r\n", key, value);
+	status = nconv != 2;
+	if (status == 0)
+		status = hmap_s_set(headers, key, strndup(value, length)) == NULL;
+	return (status);
+}
+
+const char	*http_header_get(t_hmap_s *headers, const char *key,
+	const char *default_value)
+{
+	const char			*value;
+	t_hmap_s_pair		*header;
+	
+	header = hmap_s_get(headers, key);
+	if (header != NULL)
+		value = header->value;
+	else
+		value = default_value;
+	return (value);
+}
+
+int					http_get(const http_cli_t *client, const char *path)
 {
 	char	request[256];
 	ssize_t	length;
 	ssize_t	send_length;
 	int		status;
 
-	length = snprintf(request, sizeof(request), "GET %s HTTP/1.1\r\n%s\r\n",
-		path, headers);
+	length = snprintf(request, sizeof(request), "GET %s HTTP/1.1\r\nHost: %s\r\n%s\r\n",
+		path, http_header_get(client->headers, "Host", "localhost"), headers);
 	status = length == -1;
 
 	if (status == 0)
 	{
-		dprintf(2, "Sending %s\n", request);
-		if (client->ssl == NULL)
+		do
 		{
-			do
-			{
-				send_length = send(client->connection, request, length, 0);
-				length -= send_length;
-			}
-			while (length > 0 && send_length > 0);
+			send_length = client_send(&client->socket, request, length);
+			length -= send_length;
 		}
-		else
-		{
-			dprintf(2, "Using ssl...\n");
-			do
-			{
-				send_length = SSL_write(client->ssl, request, length);
-				length -= send_length;
-			}
-			while (length > 0 && send_length > 0);
-
-			if (send_length == -1)
-				SSL_get_error(client->ssl, send_length);
-			dprintf(2, "Sent length %zd\n", send_length);
-		}
+		while (length > 0 && send_length > 0);
 
 		status = send_length == -1;
 	}
@@ -124,56 +122,108 @@ int					http_get(const sock_cli_t *client, const char *path)
 	return (status);
 }
 
-int					http_download(int dest_fd, const sock_cli_t *client,
+size_t	http_headers(t_hmap_s *headers, const char *message, size_t size)
+{
+	const char	*next;
+	size_t		body_offset;
+	size_t		header_size;
+
+	body_offset = 0;
+
+	do
+	{
+		next = find_term(message);
+
+		if (next != NULL)
+		{
+			header_size = next - message - 2;
+			if (header_size != 0)
+				http_header_add(headers, message, header_size);
+			body_offset += header_size + 2;
+		}
+		else
+			header_size = 0;
+
+		message = next;
+	}
+	while (next != NULL && header_size != 0 && body_offset < size);
+
+	return (body_offset);
+}
+
+ssize_t				http_content_length(t_hmap_s *headers)
+{
+	ssize_t			length;
+	const char		*content_length;
+	char			*end;
+
+	content_length = http_header_get(headers, "Content-Length", "-1");
+
+	length = (ssize_t)strtoll(content_length, &end, 10);
+
+	if (length == 0)
+		length = HTTP_LENGTH_UNKNOWN;
+
+	return (length);
+}
+
+int					http_download(int dest_fd, const http_cli_t *client,
 	const char *path)
 {
 	char		response[1024];
 	const char	*it;
-	ssize_t		length;
+	t_hmap_s	*headers;
+	ssize_t		content_length;
 	size_t		body_offset;
+	ssize_t		length;
 	int			status;
 
 	status = http_get(client, path);
 	if (status == 0)
 	{
-		if (client->ssl == NULL)
-			length = recv(client->connection, response, sizeof(response), 0);
-		else
-			length = SSL_read(client->ssl, response, sizeof(response));
+		length = client_recv(&client->socket, response, sizeof(response));
 
-		dprintf(2, "Downloading %zd\n", length);
 		status = length == -1;
 
 		if (status == 0)
 		{
-			body_offset = header_size(response);
-			it = response + body_offset;
-			length -= body_offset;
+			headers = hmap_s_new(HTTP_HEADER_COUNT);
 
-			if (client->ssl == NULL)
+			status = headers == NULL;
+			if (status == 0)
 			{
+				body_offset = http_headers(headers, response, length);
+
+				it = response + body_offset;
+				length -= body_offset;
+
+				content_length = http_content_length(headers);
+
 				do
 				{
 					write(dest_fd, it, length);
-					length = recv(client->connection, response,
-						sizeof(response), 0);
-					it = response;
-				}
-				while (length > 0);
-			}
-			else
-			{
-				do
-				{
-					write(dest_fd, it, length);
-					length = SSL_write(client->ssl, response, sizeof(response));
-					it = response;
-				}
-				while (length > 0);
-			}
 
-			status = length != 0;
+					length = client_recv(&client->socket, response, sizeof(response));
+					content_length -= length;
+				
+					it = response;
+				}
+				while (length > 0 && (size_t)content_length > 0);
+
+				status = length == -1;
+				hmap_s_clr(&headers, free);
+			}
 		}
 	}
+	return (status);
+}
+
+int	http_destroy(http_cli_t *client)
+{
+	int status;
+	
+	status = client_destroy(&client->socket);
+	hmap_s_clr(&client->headers, free);
+
 	return (status);
 }

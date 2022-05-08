@@ -12,14 +12,17 @@
 # define HTTP_PROTO_SSL   "https"
 #endif
 
-typedef struct  http_client
+#define HTTP_LENGTH_UNKNOWN -1
+
+typedef struct  http_cli
 {
-    sock_cli_t  socket;
+	sock_cli_t	socket;
+	t_hmap_s	*headers;
+}               http_cli_t;
 
-}               http_client_t;
+int http_connect(http_cli_t *client, const char *url);
+int	http_destroy(http_cli_t *client);
 
-int http_connect(sock_cli_t *client, const char *url);
+int http_get(const http_cli_t *client, const char *path);
 
-int http_get(const sock_cli_t *client, const char *path);
-
-int	http_download(int dest_fd, const sock_cli_t *client, const char *path);
+int	http_download(int dest_fd, const http_cli_t *client, const char *path);

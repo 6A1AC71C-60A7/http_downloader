@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -10,7 +11,7 @@
 int	main(int ac, const char **av)
 {
 	(void)	ac;
-	sock_cli_t	client;
+	http_cli_t	client;
 	int			dest_fd;
 	int			status;
 
@@ -30,6 +31,7 @@ int	main(int ac, const char **av)
 
 			close(dest_fd);
 		}
+		http_destroy(&client);
 	}
 
 	if (status != 0)
