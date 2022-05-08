@@ -13,6 +13,9 @@ typedef struct	sock_cli
 	int	connection;
 }				sock_cli_t;
 
+void	ssl_init();
+void	ssl_cleanup();
+
 int client_connect(sock_cli_t *client, const char *hostname,
 	const char *service, bool use_ssl);
 int client_connect_ssl();

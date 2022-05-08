@@ -12,7 +12,19 @@
 
 static SSL_CTX *ssl_ctx = NULL;
 
-int	resolve_hostname(struct sockaddr *addr, const char *hostname)
+
+void	ssl_init()
+{
+	SSL_load_error_strings();
+	OpenSSL_add_ssl_algorithms();
+}
+
+void	ssl_cleanup()
+{
+	EVP_cleanup();
+}
+
+int		resolve_hostname(struct sockaddr *addr, const char *hostname)
 {
 	int	status;
 
@@ -20,7 +32,7 @@ int	resolve_hostname(struct sockaddr *addr, const char *hostname)
 	return (status);
 }
 
-int	connect_hostname(const char *hostname, const char *service)
+int		connect_hostname(const char *hostname, const char *service)
 {
 	int				fd;
 	struct addrinfo	hints = (struct addrinfo)

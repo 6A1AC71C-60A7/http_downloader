@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
 #include <http.h>
 
@@ -49,14 +50,45 @@ static size_t		header_size(const char *message)
 	return (size);
 }
 
-int					get(const sock_cli_t *client, const char *path)
+int					http_connect(sock_cli_t *client, const char *url)
+{
+	char	hostname[256];
+	char	protocol[256];
+	char	port[32];
+	ssize_t	nconv;
+	int		status;
+	bool	use_ssl;
+
+	nconv = sscanf(url, "%256[^:]://%256[^:]:%32[^/]", protocol, hostname, port);
+
+	status = nconv < 2;
+
+	use_ssl = strcmp(HTTP_PROTO_SSL, protocol) == 0;
+
+	if (nconv == 2)
+		strcpy(port, protocol);
+
+	if (status == 0)
+	{
+		dprintf(2, "Connecting to %s://%s:%s...\n", protocol, hostname, port);
+		status = client_connect(client, hostname, port, use_ssl);
+	}
+	else
+	{
+		dprintf(2, "Invalid url: %s, found %zi fields!\n", url, nconv);
+	}
+	return (status);
+}
+
+int					http_get(const sock_cli_t *client, const char *path)
 {
 	char	request[256];
 	ssize_t	length;
 	ssize_t	send_length;
 	int		status;
 
-	length = snprintf(request, sizeof(request), "GET %s HTTP/1.1\r\n%s\r\n", path, headers);
+	length = snprintf(request, sizeof(request), "GET %s HTTP/1.1\r\n%s\r\n",
+		path, headers);
 	status = length == -1;
 
 	if (status == 0)
@@ -92,7 +124,8 @@ int					get(const sock_cli_t *client, const char *path)
 	return (status);
 }
 
-int					download(int dest_fd, const sock_cli_t *client, const char *path)
+int					http_download(int dest_fd, const sock_cli_t *client,
+	const char *path)
 {
 	char		response[1024];
 	const char	*it;
@@ -100,7 +133,7 @@ int					download(int dest_fd, const sock_cli_t *client, const char *path)
 	size_t		body_offset;
 	int			status;
 
-	status = get(client, path);
+	status = http_get(client, path);
 	if (status == 0)
 	{
 		if (client->ssl == NULL)
@@ -122,7 +155,8 @@ int					download(int dest_fd, const sock_cli_t *client, const char *path)
 				do
 				{
 					write(dest_fd, it, length);
-					length = recv(client->connection, response, sizeof(response), 0);
+					length = recv(client->connection, response,
+						sizeof(response), 0);
 					it = response;
 				}
 				while (length > 0);
