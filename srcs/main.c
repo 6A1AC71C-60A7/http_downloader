@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <string.h>
@@ -12,70 +13,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include <sock_cli.h>
 #include <http.h>
-
-#ifndef DL_AF
-# define DL_AF AF_INET
-#endif
-
-typedef struct	client
-{
-	SSL	*ssl;
-	int	socket;
-}				client_t;
-
-int	resolve_hostname(struct sockaddr *addr, const char *hostname)
-{
-	int	status;
-
-	status = inet_pton(DL_AF, hostname, addr);
-	return (status);
-}
-
-int	connect_hostname(const char *hostname, const char *port)
-{
-	int				fd;
-	struct addrinfo	hints = (struct addrinfo)
-	{
-		.ai_family = DL_AF,
-		.ai_socktype = SOCK_STREAM,
-		.ai_protocol = IPPROTO_IP,
-	};
-	struct addrinfo	*info;
-	struct addrinfo	*curr;
-
-	fd = getaddrinfo(hostname, port, &hints, &info);
-	if (fd == 0)
-	{
-		for (curr = info; curr != NULL; curr = curr->ai_next)
-		{
-			fd = socket(curr->ai_family, curr->ai_socktype,
-				curr->ai_protocol);
-			if (fd != -1 && connect(fd, curr->ai_addr, curr->ai_addrlen) == 0)
-				break;
-			else
-				close(fd);
-		}
-
-		freeaddrinfo(info);
-
-		if (curr == NULL)
-		{
-			fd = -1;
-			if (errno == 0)
-				errno = EADDRNOTAVAIL;
-		}
-	}
-	return fd;
-}
-
-void	print_hostname(const struct sockaddr *addr)
-{
-	char	hostname[256];
-
-	inet_ntop(DL_AF, addr, hostname, sizeof(*addr));
-	write(STDOUT_FILENO, hostname, strlen(hostname));
-}
 
 void	init_ssl()
 {
@@ -88,16 +27,52 @@ void	cleanup_ssl()
 	EVP_cleanup();
 }
 
+int	http_connect(sock_cli_t *client, const char *url)
+{
+	char	hostname[256];
+	char	protocol[256];
+	char	port[32];
+	ssize_t	nconv;
+	int		status;
+	bool	use_ssl;
+
+	nconv = sscanf(url, "%256[^:]://%256[^:]:%32[^/]", protocol, hostname, port);
+
+	status = nconv < 2;
+
+	use_ssl = strcmp("https", protocol) == 0;
+
+	if (nconv == 2)
+	{
+		if (use_ssl)
+			strcpy(port, "443");
+		else
+			strcpy(port, "80");
+	}
+
+	if (status == 0)
+	{
+		dprintf(2, "Connecting to %s://%s:%s...\n", protocol, hostname, port);
+		status = client_connect(client, hostname, port, use_ssl);
+	}
+	else
+	{
+		dprintf(2, "Invalid url: %s, found %zi fields!\n", url, nconv);
+	}
+	return (status);
+}
+
 int	main(int ac, const char **av)
 {
 	(void)	ac;
-	int	status;
-	int	client;
-	int	dest_fd;
-	
-	client = connect_hostname("i.imgur.com", "80");
-	status = client == -1;
+	sock_cli_t	client;
+	int			dest_fd;
+	int			status;
 
+	init_ssl();
+
+	bzero(&client, sizeof(client));
+	status = http_connect(&client, "https://i.imgur.com");
 	if (status == 0)
 	{
 		dest_fd = open(av[1] ? av[1] : "goat.png",
@@ -106,7 +81,7 @@ int	main(int ac, const char **av)
 		status = dest_fd == -1;
 		if (status == 0)
 		{
-			status = download(dest_fd, client, "/wPPYWyV.png");
+			status = download(dest_fd, &client, "/wPPYWyV.png");
 
 			close(dest_fd);
 		}
@@ -114,5 +89,7 @@ int	main(int ac, const char **av)
 
 	if (status != 0)
 		perror(av[0]);
+
+	cleanup_ssl();
 	return (status);
 }

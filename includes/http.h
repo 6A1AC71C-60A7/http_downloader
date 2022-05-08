@@ -1,4 +1,6 @@
 #pragma once
 
-int	get(int client, const char *path);
-int	download(int dest_fd, int client, const char *path);
+#include <sock_cli.h>
+
+int	get(const sock_cli_t *client, const char *path);
+int	download(int dest_fd, const sock_cli_t *client, const char *path);

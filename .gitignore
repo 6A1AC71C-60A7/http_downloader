@@ -14,3 +14,6 @@ objs/
 # clangd
 .cache/
 compile_commands.json
+
+# Test file
+goat.png
