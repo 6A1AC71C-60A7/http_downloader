@@ -2,8 +2,13 @@
 
 #include <sock_cli.h>
 
-#define HTTP_PROTO       "http"
-#define HTTP_PROTO_SSL   "https"
+#ifndef HTTP_PROTO
+# define HTTP_PROTO       "http"
+#endif
+
+#ifndef HTTP_PROTO_SSL
+# define HTTP_PROTO_SSL   "https"
+#endif
 
 int http_connect(sock_cli_t *client, const char *url);
 
